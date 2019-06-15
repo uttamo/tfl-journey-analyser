@@ -22,7 +22,7 @@ class JourneyHistory:
         return len(self.df)
 
     def __repr__(self):
-        return 'JourneyHistory(history_folder={!r})'.format(self.history_folder)
+        return 'JourneyHistory(history_folder={!r}, rows={})'.format(self.history_folder, len(self))
 
     def __getitem__(self, item):
         if item >= len(self):
@@ -39,6 +39,9 @@ class JourneyHistory:
             df = pd.read_csv(csv_file)
             if df.columns.tolist() == expected_columns:
                 individual_history_dfs.append(df)
+
+        if len(individual_history_dfs) == 0:
+            return pd.DataFrame()
 
         # Join all the individual dfs into one big df
         df = pd.concat(individual_history_dfs)
