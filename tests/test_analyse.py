@@ -15,7 +15,6 @@ class TestAnalyse(TestCase):
 
         # Load the expected df with the correct dtypes
         expected_df = pd.read_csv(os.path.join(TESTDATA_DIR, 'test_output1.csv'),
-                                  parse_dates=[0, 1, 4], dayfirst=True)
-        expected_df.iloc[:,4] = pd.to_timedelta(expected_df.iloc[:, 4])
+                                  parse_dates=[0, 1], dayfirst=True)
 
         pd.testing.assert_frame_equal(history_df, expected_df)

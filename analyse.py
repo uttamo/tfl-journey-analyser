@@ -7,6 +7,36 @@ import pandas as pd
 TESTDATA_DIR = os.path.join('testdata')
 
 
+class Journey:
+    def __init__(self, start_time, end_time, origin, destination, charge, note):
+        self.start_time = start_time
+        self.end_time = end_time
+        self.origin = origin
+        self.destination = destination
+        self.charge = charge
+        self.note = note
+
+        if self.end_time:
+            self.journey_time = self.end_time - self.start_time
+        else:
+            self.journey_time = None
+
+    def __repr__(self):
+        return 'Journey(start_time={!r}, end_time={!r}, origin={!r}, destination={!r}, journey_time={!r}, ' \
+               'charge={!r}, note={!r})'.format(self.start_time, self.end_time, self.origin, self.destination,
+                                                self.journey_time, self.charge, self.note)
+
+    def __lt__(self, other):
+        if not (self.journey_time or other.journey_time):
+            return False
+        return self.journey_time < other.journey_time
+
+    def __gt__(self, other):
+        if not (self.journey_time or other.journey_time):
+            return False
+        return self.journey_time > other.journey_time
+
+
 class JourneyHistory:
     def __init__(self, history_folder: str):
         assert os.path.exists(history_folder), 'Journey history folder does not exist: {}'.format(history_folder)
@@ -57,15 +87,26 @@ class JourneyHistory:
         # Add 1 day to journeys whose end times go into the next day
         df.loc[df['End Time'] < df['Start Time'], 'End Time'] += dt.timedelta(days=1)
 
-        # Get journey time column
-        df['Journey time'] = df['End Time'] - df['Start Time']
-
         # Get the origin and destination columns
         df['From'] = df['Journey/Action'].str.split(' to ').str[0]
         df['To'] = df['Journey/Action'].str.split(' to ').str[1]
         df = df[pd.notnull(df['From']) & pd.notnull(df['To'])]
 
-        final_columns = ['Start Time', 'End Time', 'From', 'To', 'Journey time', 'Charge', 'Note']
+        final_columns = ['Start Time', 'End Time', 'From', 'To', 'Charge', 'Note']
         df = df[final_columns].reset_index().drop('index', axis=1)
 
         return df
+
+    @staticmethod
+    def df_row_to_journey(row: pd.Series) -> Journey:
+        start_time = row['Start Time'].to_pydatetime() if not pd.isnull(row['Start Time']) else None
+        end_time = row['End Time'].to_pydatetime() if not pd.isnull(row['End Time']) else None
+        origin = row['From'] if not pd.isnull(row['From']) else None
+        destination = row['To'] if not pd.isnull(row['To']) else None
+        charge = row['Charge'] if not pd.isnull(row['Charge']) else None
+        note = row['Note'] if not pd.isnull(row['Note']) else None
+        return Journey(start_time, end_time, origin, destination, charge, note)
+
+    def create_journeys(self) -> list:
+        journeys = [self.df_row_to_journey(row) for _, row in self.df.iterrows()]
+        return journeys
