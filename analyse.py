@@ -3,6 +3,7 @@ import datetime as dt
 from typing import List
 
 import pandas as pd
+import numpy as np
 
 TESTDATA_DIR = os.path.join('testdata')
 
@@ -45,6 +46,7 @@ class JourneyHistory:
         # List of filepaths for all CSVs in `self.history_folder`
         history_files = [os.path.join(self.history_folder, f) for f in os.listdir(self.history_folder) if f.endswith('.csv')]
 
+        self.raw_dfs = {}
         self.df = self.load_history_csvs(history_files)
 
     def __len__(self):
@@ -59,15 +61,15 @@ class JourneyHistory:
             raise IndexError('Index out of range of number of DataFrame rows')
         return self.df.iloc[item]
 
-    @staticmethod
-    def load_history_csvs(csv_filepaths: List[str]) -> pd.DataFrame:
+    def load_history_csvs(self, csv_filepaths: List[str]) -> pd.DataFrame:
         """ For a given list of filename, load the CSVs into one dataframe."""
         individual_history_dfs = []
         # Use to validate CSV file as a journey history file
         expected_columns = ['Date', 'Start Time', 'End Time', 'Journey/Action', 'Charge', 'Credit', 'Balance', 'Note']
         for csv_file in csv_filepaths:
             df = pd.read_csv(csv_file)
-            if df.columns.tolist() == expected_columns:
+            if df.columns.tolist() == expected_columns:  # having the correct headers is the condition for a valid file
+                self.raw_dfs[csv_file] = df
                 individual_history_dfs.append(df)
 
         if len(individual_history_dfs) == 0:
@@ -75,12 +77,13 @@ class JourneyHistory:
 
         # Join all the individual dfs into one big df
         df = pd.concat(individual_history_dfs)
-        df = df.sort_values('Date')
 
-        # Drop all rows with no end time (bus journeys and top ups)
-        # todo - support bus journeys
-        df = df[pd.notnull(df['End Time'])]
+        # Initialise empty `Bus Journeys` columns that will be filled
+        df['Bus Route'] = np.nan
+        df['Bus Route'] = df['Bus Route'].astype('O')
+        df = df.sort_values('Date').reset_index().drop('index', axis=1)
 
+        # Processing of dates and times (mainly combining)
         df['Start Time'] = pd.to_datetime(df['Date'] + ' ' + df['Start Time'])
         df['End Time'] = pd.to_datetime(df['Date'] + ' ' + df['End Time'])
 
@@ -90,9 +93,28 @@ class JourneyHistory:
         # Get the origin and destination columns
         df['From'] = df['Journey/Action'].str.split(' to ').str[0]
         df['To'] = df['Journey/Action'].str.split(' to ').str[1]
-        df = df[pd.notnull(df['From']) & pd.notnull(df['To'])]
 
-        final_columns = ['Start Time', 'End Time', 'From', 'To', 'Charge', 'Note']
+        # Filter out unwanted rows
+        # todo - find better way of chaining these ORs
+        df = df[~(df['To'].astype(str).str.contains("No touch-out") |
+                  df['Journey/Action'].str.contains('Oyster helpline refund') |
+                  df['Journey/Action'].str.contains('Auto top-up') |
+                  df['Journey/Action'].str.contains('Topped-up on touch in'))]
+
+        # Bus journeys
+        bus_journeys = df.loc[df['Journey/Action'].str.contains('Bus journey')]
+        bus_journeys['Bus Route'] = bus_journeys['Journey/Action'].str.extract(r'(\w\d+)')
+        bus_journeys['Journey/Action'] = np.nan
+        bus_journeys['From'] = np.nan
+
+        # Correcting dtypes for merging
+        bus_journeys['Journey/Action'] = bus_journeys['Journey/Action'].astype('O')
+        bus_journeys['From'] = bus_journeys['From'].astype('O')
+
+        # Merging the processed dataframe subset for bus journeys back into the main dataframe
+        df.loc[bus_journeys.index] = bus_journeys
+
+        final_columns = ['Start Time', 'End Time', 'From', 'To', 'Bus Route','Charge', 'Note']
         df = df[final_columns].reset_index().drop('index', axis=1)
 
         return df
