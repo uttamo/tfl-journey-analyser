@@ -39,21 +39,24 @@ class Journey:
 
 class JourneyHistory:
     def __init__(self, history_folder: str = None):
+        self.raw_dfs = {}
+
         if history_folder is not None:
             assert os.path.exists(history_folder), 'Journey history folder does not exist: {}'.format(history_folder)
             self.history_folder = history_folder
+            self.df = self.load_history_from_dir(self.history_folder)
         else:
             self.history_folder = None
-
-        self.raw_dfs = {}
-        self.df = None
+            self.df = None
 
     def __len__(self):
         """ Number of total rows of the dataframe """
+        if not self.df:
+            return 0
         return len(self.df)
 
     def __repr__(self):
-        return 'JourneyHistory(history_folder={!r}, rows={})'.format(self.history_folder, len(self))
+        return 'JourneyHistory(rows={})'.format(len(self))
 
     def __getitem__(self, item):
         if item >= len(self):
@@ -91,6 +94,9 @@ class JourneyHistory:
         # Add 1 day to journeys whose end times go into the next day
         df.loc[df['End Time'] < df['Start Time'], 'End Time'] += dt.timedelta(days=1)
 
+        # Calculate durations
+        df['Duration'] = df['End Time'] - df['Start Time']
+
         # Get the origin and destination columns
         df['From'] = df['Journey/Action'].str.split(' to ').str[0]
         df['To'] = df['Journey/Action'].str.split(' to ').str[1]
@@ -111,7 +117,7 @@ class JourneyHistory:
         # Merging the processed dataframe subset for bus journeys back into the main dataframe
         df.loc[bus_journeys.index] = bus_journeys
 
-        final_columns = ['Start Time', 'End Time', 'From', 'To', 'Bus Route','Charge', 'Note']
+        final_columns = ['Start Time', 'End Time', 'Duration', 'From', 'To', 'Bus Route','Charge', 'Note']
         df = df[final_columns].reset_index().drop('index', axis=1)
 
         self.df = df
