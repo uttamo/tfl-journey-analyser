@@ -1,6 +1,5 @@
 import os.path
 import datetime as dt
-from typing import List
 
 import pandas as pd
 import numpy as np
@@ -39,15 +38,15 @@ class Journey:
 
 
 class JourneyHistory:
-    def __init__(self, history_folder: str):
-        assert os.path.exists(history_folder), 'Journey history folder does not exist: {}'.format(history_folder)
-        self.history_folder = history_folder
-
-        # List of filepaths for all CSVs in `self.history_folder`
-        history_files = [os.path.join(self.history_folder, f) for f in os.listdir(self.history_folder) if f.endswith('.csv')]
+    def __init__(self, history_folder: str = None):
+        if history_folder is not None:
+            assert os.path.exists(history_folder), 'Journey history folder does not exist: {}'.format(history_folder)
+            self.history_folder = history_folder
+        else:
+            self.history_folder = None
 
         self.raw_dfs = {}
-        self.df = self.load_history_csvs(history_files)
+        self.df = None
 
     def __len__(self):
         """ Number of total rows of the dataframe """
@@ -61,8 +60,11 @@ class JourneyHistory:
             raise IndexError('Index out of range of number of DataFrame rows')
         return self.df.iloc[item]
 
-    def load_history_csvs(self, csv_filepaths: List[str]) -> pd.DataFrame:
+    def load_history_from_dir(self, history_folder: str) -> pd.DataFrame:
         """ For a given list of filename, load the CSVs into one dataframe."""
+        # List of filepaths for all CSVs in `history_folder`
+        csv_filepaths = [os.path.join(history_folder, f) for f in os.listdir(history_folder) if f.endswith('.csv')]
+
         individual_history_dfs = []
         # Use to validate CSV file as a journey history file
         expected_columns = ['Date', 'Start Time', 'End Time', 'Journey/Action', 'Charge', 'Credit', 'Balance', 'Note']
@@ -80,7 +82,6 @@ class JourneyHistory:
 
         # Initialise empty `Bus Journeys` columns that will be filled
         df['Bus Route'] = np.nan
-        df['Bus Route'] = df['Bus Route'].astype('O')
         df = df.sort_values('Date').reset_index().drop('index', axis=1)
 
         # Processing of dates and times (mainly combining)
@@ -107,20 +108,17 @@ class JourneyHistory:
         bus_journeys['Journey/Action'] = np.nan
         bus_journeys['From'] = np.nan
 
-        # Correcting dtypes for merging
-        bus_journeys['Journey/Action'] = bus_journeys['Journey/Action'].astype('O')
-        bus_journeys['From'] = bus_journeys['From'].astype('O')
-
         # Merging the processed dataframe subset for bus journeys back into the main dataframe
         df.loc[bus_journeys.index] = bus_journeys
 
         final_columns = ['Start Time', 'End Time', 'From', 'To', 'Bus Route','Charge', 'Note']
         df = df[final_columns].reset_index().drop('index', axis=1)
 
-        return df
+        self.df = df
+        return self.df
 
     @staticmethod
-    def df_row_to_journey(row: pd.Series) -> Journey:
+    def _df_row_to_journey(row: pd.Series) -> Journey:
         start_time = row['Start Time'].to_pydatetime() if not pd.isnull(row['Start Time']) else None
         end_time = row['End Time'].to_pydatetime() if not pd.isnull(row['End Time']) else None
         origin = row['From'] if not pd.isnull(row['From']) else None
@@ -129,6 +127,6 @@ class JourneyHistory:
         note = row['Note'] if not pd.isnull(row['Note']) else None
         return Journey(start_time, end_time, origin, destination, charge, note)
 
-    def create_journeys(self) -> list:
-        journeys = [self.df_row_to_journey(row) for _, row in self.df.iterrows()]
+    def _create_journeys(self) -> list:
+        journeys = [self._df_row_to_journey(row) for _, row in self.df.iterrows()]
         return journeys
