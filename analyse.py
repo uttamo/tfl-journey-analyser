@@ -1,10 +1,12 @@
 import os.path
 import datetime as dt
+from typing import List
+import logging
 
 import pandas as pd
 import numpy as np
 
-TESTDATA_DIR = os.path.join('testdata')
+logging.getLogger().setLevel(logging.INFO)
 
 
 class Journey:
@@ -38,25 +40,28 @@ class Journey:
 
 
 class JourneyHistory:
-    def __init__(self, history_folder: str = None):
+    def __init__(self, history_files: List[str] = None, history_folder: str = None):
         self.raw_dfs = {}
 
         if history_folder is not None:
+            if history_files is not None:
+                raise ValueError('Only provide either the list of journey history files or the folder containing the'
+                                 ' history files, but not both.')
+
             assert os.path.exists(history_folder), 'Journey history folder does not exist: {}'.format(history_folder)
-            self.history_folder = history_folder
-            self.df = self.load_history_from_dir(self.history_folder)
+            self.df = self.load_history_from_dir(history_folder)
         else:
-            self.history_folder = None
-            self.df = None
+            assert isinstance(history_files, list), '`history_files` must be a list of filepaths'
+            self.df = self.load_history_from_file_list(history_files)
 
     def __len__(self):
         """ Number of total rows of the dataframe """
-        if not self.df:
+        if self.df is None:
             return 0
         return len(self.df)
 
     def __repr__(self):
-        return 'JourneyHistory(rows={})'.format(len(self))
+        return 'JourneyHistory(journeys={})'.format(len(self))
 
     def __getitem__(self, item):
         if item >= len(self):
@@ -64,28 +69,36 @@ class JourneyHistory:
         return self.df.iloc[item]
 
     def load_history_from_dir(self, history_folder: str) -> pd.DataFrame:
-        """ For a given list of filename, load the CSVs into one dataframe."""
         # List of filepaths for all CSVs in `history_folder`
         csv_filepaths = [os.path.join(history_folder, f) for f in os.listdir(history_folder) if f.endswith('.csv')]
+        return self.load_history_from_file_list(csv_filepaths)
 
+    def load_history_from_file_list(self, history_files: List[str]) -> pd.DataFrame:
+        """ For a given list of filename, load the CSVs into one dataframe.
+        Columns: ['Start Time', 'End Time', 'Duration', 'From', 'To', 'Bus Route', 'Charge', 'Note']
+        """
         individual_history_dfs = []
         # Use to validate CSV file as a journey history file
         expected_columns = ['Date', 'Start Time', 'End Time', 'Journey/Action', 'Charge', 'Credit', 'Balance', 'Note']
-        for csv_file in csv_filepaths:
+        for csv_file in history_files:
             df = pd.read_csv(csv_file)
             if df.columns.tolist() == expected_columns:  # having the correct headers is the condition for a valid file
                 self.raw_dfs[csv_file] = df
                 individual_history_dfs.append(df)
 
         if len(individual_history_dfs) == 0:
+            logging.info('No valid CSV files')
             return pd.DataFrame()
 
         # Join all the individual dfs into one big df
-        df = pd.concat(individual_history_dfs)
+        combined_df = pd.concat(individual_history_dfs)
+        return self.clean_raw_df(combined_df)
 
+    def clean_raw_df(self, combined_df: pd.DataFrame) -> pd.DataFrame:
+        df = combined_df
         # Initialise empty `Bus Journeys` columns that will be filled
         df['Bus Route'] = np.nan
-        df = df.sort_values('Date').reset_index().drop('index', axis=1)
+        df = df.reset_index().drop('index', axis=1)
 
         # Processing of dates and times (mainly combining)
         df['Start Time'] = pd.to_datetime(df['Date'] + ' ' + df['Start Time'])
@@ -117,8 +130,8 @@ class JourneyHistory:
         # Merging the processed dataframe subset for bus journeys back into the main dataframe
         df.loc[bus_journeys.index] = bus_journeys
 
-        final_columns = ['Start Time', 'End Time', 'Duration', 'From', 'To', 'Bus Route','Charge', 'Note']
-        df = df[final_columns].reset_index().drop('index', axis=1)
+        final_columns = ['Start Time', 'End Time', 'Duration', 'From', 'To', 'Bus Route', 'Charge', 'Note']
+        df = df[final_columns].sort_values('Start Time').reset_index().drop('index', axis=1)
 
         self.df = df
         return self.df
