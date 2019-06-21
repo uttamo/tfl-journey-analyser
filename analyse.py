@@ -40,16 +40,16 @@ class Journey:
 
 
 class JourneyHistory:
-    def __init__(self, history_files: List[str] = None, history_folder: str = None):
+    def __init__(self, history_files: List[str] = None, history_dir: str = None):
         self.raw_dfs = {}
 
-        if history_folder is not None:
+        if history_dir is not None:
             if history_files is not None:
-                raise ValueError('Only provide either the list of journey history files or the folder containing the'
+                raise ValueError('Only provide either the list of journey history files or the directory containing the'
                                  ' history files, but not both.')
 
-            assert os.path.exists(history_folder), 'Journey history folder does not exist: {}'.format(history_folder)
-            self.df = self.load_history_from_dir(history_folder)
+            assert os.path.exists(history_dir), 'Journey history directory does not exist: {}'.format(history_dir)
+            self.df = self.load_history_from_dir(history_dir)
         else:
             assert isinstance(history_files, list), '`history_files` must be a list of filepaths'
             self.df = self.load_history_from_file_list(history_files)
@@ -68,9 +68,9 @@ class JourneyHistory:
             raise IndexError('Index out of range of number of DataFrame rows')
         return self.df.iloc[item]
 
-    def load_history_from_dir(self, history_folder: str) -> pd.DataFrame:
-        # List of filepaths for all CSVs in `history_folder`
-        csv_filepaths = [os.path.join(history_folder, f) for f in os.listdir(history_folder) if f.endswith('.csv')]
+    def load_history_from_dir(self, history_dir: str) -> pd.DataFrame:
+        # List of filepaths for all CSVs in `history_dir`
+        csv_filepaths = [os.path.join(history_dir, f) for f in os.listdir(history_dir) if f.endswith('.csv')]
         return self.load_history_from_file_list(csv_filepaths)
 
     def load_history_from_file_list(self, history_files: List[str]) -> pd.DataFrame:
