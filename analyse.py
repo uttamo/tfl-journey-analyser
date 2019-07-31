@@ -92,9 +92,9 @@ class JourneyHistory:
 
         # Join all the individual dfs into one big df
         combined_df = pd.concat(individual_history_dfs)
-        return self.clean_raw_df(combined_df)
+        return self._clean_raw_df(combined_df)
 
-    def clean_raw_df(self, combined_df: pd.DataFrame) -> pd.DataFrame:
+    def _clean_raw_df(self, combined_df: pd.DataFrame) -> pd.DataFrame:
         df = combined_df
         # Initialise empty `Bus Journeys` columns that will be filled
         df['Bus Route'] = np.nan
@@ -149,3 +149,31 @@ class JourneyHistory:
     def _create_journeys(self) -> list:
         journeys = [self._df_row_to_journey(row) for _, row in self.df.iterrows()]
         return journeys
+
+    def get_summary_stats(self) -> dict:
+        total_journey_time = self.df['Duration'].sum()
+        total_fare_expense = self.df['Charge'].sum()
+
+        return {'total_journey_time': total_journey_time,
+                'total_fare_expense': total_fare_expense}
+
+    def get_top_origin_stations(self, n=5) -> pd.Series:
+        return self._get_top_stations_from_series(self.df['From'], n)
+
+    def get_top_destination_stations(self, n=5) -> pd.Series:
+        return self._get_top_stations_from_series(self.df['To'], n)
+
+    def _get_top_stations_from_series(self, stations: pd.Series, n=5):
+        top_frequencies = stations.value_counts().head(n).values
+        top_origin_stations_df = stations.value_counts().to_frame('freq')
+        top_frequencies = top_origin_stations_df.loc[top_origin_stations_df['freq'].isin(top_frequencies)]
+        return top_frequencies.sort_values(by='freq', ascending=False)
+
+    def get_top_stations(self, n=5) -> pd.Series:
+        return pd.concat([self.df['From'], self.df['To']]).value_counts().sort_values(ascending=False).head(n)
+
+    def get_longest_journeys(self, n=5) -> pd.Series:
+        return self.df.sort_values('Duration', ascending=False).head(n)
+
+    def get_most_common_journeys(self, n=5) -> pd.Series:
+        return self.df.groupby(['From', 'To']).size().sort_values(ascending=False).head(n)
